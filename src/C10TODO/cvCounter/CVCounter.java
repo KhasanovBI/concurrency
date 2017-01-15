@@ -3,11 +3,6 @@ package C10TODO.cvCounter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.IntStream;
 
 import static java.lang.System.currentTimeMillis;
@@ -17,35 +12,21 @@ import static java.util.stream.Collectors.toList;
  * Created by bulat on 12.01.17.
  */
 public class CVCounter implements Counters {
-    private volatile Map<String, LongAdder> currentMap = new ConcurrentHashMap<>();
+    private Map<String, Long> currentMap = new HashMap<>();
     private Map<String, Long> result = new HashMap<>();
-    private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
-    private final Lock readLock = readWriteLock.readLock();
-    private final Lock writeLock = readWriteLock.writeLock();
 
-    public void increment(String tag) {
-        readLock.lock();
-        LongAdder value = currentMap.get(tag);
-        if (value == null) {
-            LongAdder longAdder = new LongAdder();
-            longAdder.increment();
-            value = currentMap.putIfAbsent(tag, longAdder);
-
-        }
+    public synchronized void increment(String tag) {
+        Long value = currentMap.putIfAbsent(tag, 1L);
         if (value != null) {
-            value.increment();
+            currentMap.put(tag, value + 1);
         }
-        readLock.unlock();
     }
 
-    public Map<String, Long> getCountersAndClear() {
-        writeLock.lock();
+    public synchronized Map<String, Long> getCountersAndClear() {
         result.clear();
-        currentMap.replaceAll((s, longAdder) -> {
-            result.put(s, longAdder.longValue());
-            return new LongAdder();
-        });
-        writeLock.unlock();
+        Map<String, Long> temp = currentMap;
+        currentMap = result;
+        result = temp;
         return result;
     }
 
@@ -78,7 +59,7 @@ public class CVCounter implements Counters {
         System.out.println(numOfIterations * numOfThreads + " - expected");
         results = cvCounter.getCountersAndClear();
         System.out.println(results);
-        System.out.println(realCount + results.get(tagName) + " - real");
+        System.out.printf("%d - real%n", realCount + results.get(tagName));
         System.out.println(duration + " ms");
     }
 }
